@@ -1,0 +1,45 @@
+name: Daily Topic Intelligence
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "跳过纽约时间7点的触发窗口检查，强制运行（用于手动测试）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  intel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate topic intelligence report
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          FORCE_RUN: ${{ github.event.inputs.force == 'true' && 'true' || 'false' }}
+        run: python scripts/generate_report.py
+
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports "选题情报.html"
+          git diff --cached --quiet && exit 0
+          git commit -m "Add daily topic intelligence report"
+          for i in 1 2 3 4 5; do
+            git push && exit 0
+            echo "Push rejected, retrying..."
+            git pull --rebase origin main
+            sleep 3
+          done
+          echo "::warning::Failed to push archived report after retries, but the email was already sent successfully."
+          exit 0
